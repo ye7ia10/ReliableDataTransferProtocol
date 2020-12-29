@@ -83,7 +83,9 @@ int main()
              perror("Client closed connection or error in receiving bytes");
              exit(1);
         }
-        cout << "requested from client  : " << rec_buffer << endl << flush;
+        string str = string(rec_buffer);
+        cout << str.size();
+        cout << "requested from client  : " << string(rec_buffer) << endl << flush;
         /** forking to handle request **/
          pid_t pid = fork();
          if (pid == -1){
