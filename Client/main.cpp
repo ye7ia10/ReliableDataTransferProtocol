@@ -62,13 +62,49 @@ int main()
     string fileName;
     cout << "Enter File Name : " << endl<<flush;
     cin >> fileName;
-    cout << "File Name is : " << fileName << " The lenght of the Name : " << fileName.size();
+    cout << "File Name is : " << fileName << " The lenght of the Name : " << fileName.size() << endl << flush;
     struct packet fileName_packet = create_packet_data(fileName);
-    char* buffer = &fileName_packet.data[0];
+    char* buffer = new char[MSS];
+    memset(buffer, 0, MSS);
+    memcpy(buffer, &fileName_packet, sizeof(fileName_packet));
     ssize_t bytesSent = sendto(client_socket, buffer, MSS, 0, (struct sockaddr *)&server_address, sizeof(struct sockaddr));
     if (bytesSent == -1) {
         perror("couldn't send the packet");
+    } else {
+       cout << "Sent The file Name " << endl << flush;
     }
+
+
+    char rec_buffer[MSS];
+    socklen_t addrlen = sizeof(server_address);
+    ssize_t Received_bytes = recvfrom(client_socket, rec_buffer, MSS, 0, (struct sockaddr*)&server_address, &addrlen);
+    if (Received_bytes < 0){
+        perror("error in receiving bytes");
+        exit(1);
+    }
+    auto* ackPacket = (struct ack_packet*) rec_buffer;
+    cout << "Number of packets " << ackPacket->len << endl;
+    long numberOfPackets = ackPacket->len;
+
+
+    int i = 1;
+    while (true){
+        memset(rec_buffer, 0, MSS);
+        ssize_t bytesReceived = recvfrom(client_socket, rec_buffer, MSS, 0, (struct sockaddr*)&server_address, &addrlen);
+        if (bytesReceived == -1){
+            perror("Error in recv(). Quitting");
+            break;
+        }
+        auto* data_packet = (struct packet*) rec_buffer;
+        cout <<"packet "<<i<<" received" <<endl<<flush;
+        cout << "Sequence Number : " << data_packet->seqno << endl<<flush;
+        //out << data_packet->data[0]<<data_packet->data[499] << endl;
+        /** send ack **/
+        i++;
+    }
+
+
+
     return 0;
 }
 

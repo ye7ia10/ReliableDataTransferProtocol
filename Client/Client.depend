@@ -1,24 +1,20 @@
 # depslib dependency file v1.0
-1609297269 source:/home/yehia/Desktop/Server/main.cpp
-	<utility>
+1609268285 source:/home/yehia/Desktop/Client/main.cpp
 	<iostream>
 	<stdio.h>
 	<stdlib.h>
 	<unistd.h>
-	<errno.h>
+	<signal.h>
 	<netdb.h>
 	<string>
 	<thread>
+	<ctime>
+	<bits/stdc++.h>
+	<errno.h>
 	<string.h>
 	<sys/types.h>
 	<sys/socket.h>
 	<netinet/in.h>
 	<arpa/inet.h>
 	<sys/wait.h>
-	<signal.h>
-	<chrono>
-	<bits/stdc++.h>
-	<sys/stat.h>
-	<sys/ioctl.h>
-	<linux/sockios.h>
 
