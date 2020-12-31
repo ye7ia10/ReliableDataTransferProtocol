@@ -38,9 +38,19 @@ struct ack_packet {
 };
 
 packet create_packet_data(string file_name);
+void saveFile (string fileName, string content);
+void send_acknowledgement_packet(int client_socket, struct sockaddr_in server_address ,  int seqNum);
+vector<string> readArgsFile();
 
 int main()
 {
+
+    /** read args file info content **/
+    vector<string> the_args = readArgsFile();
+    string IP_Address = the_args[0];
+    string theFile = the_args[2];
+    int port = stoi(the_args[1]);
+
     struct sockaddr_in server_address;
     int client_socket;
 
@@ -85,10 +95,12 @@ int main()
     auto* ackPacket = (struct ack_packet*) rec_buffer;
     cout << "Number of packets " << ackPacket->len << endl;
     long numberOfPackets = ackPacket->len;
+    string fileContents [numberOfPackets];
 
 
     int i = 1;
-    while (true){
+    int expectedSeqNum = 0;
+    while (true && i <= numberOfPackets){
         memset(rec_buffer, 0, MSS);
         ssize_t bytesReceived = recvfrom(client_socket, rec_buffer, MSS, 0, (struct sockaddr*)&server_address, &addrlen);
         if (bytesReceived == -1){
@@ -98,10 +110,29 @@ int main()
         auto* data_packet = (struct packet*) rec_buffer;
         cout <<"packet "<<i<<" received" <<endl<<flush;
         cout << "Sequence Number : " << data_packet->seqno << endl<<flush;
-        //out << data_packet->data[0]<<data_packet->data[499] << endl;
-        /** send ack **/
-        i++;
+        int len = data_packet->len;
+        for (int j = 0 ; j < len ; j++){
+            fileContents[data_packet->seqno] += data_packet->data[j];
+        }
+        //fileContents[data_packet->seqno] = string(&data_packet->data[0], &data_packet->data[499]);
+        //cout << data_packet->data[0]<<data_packet->data[499] << endl;
+        if (expectedSeqNum == data_packet->seqno){
+            /** send ack **/
+            send_acknowledgement_packet(client_socket, server_address , data_packet->seqno);
+            i++;
+            expectedSeqNum++;
+        } else {
+           send_acknowledgement_packet(client_socket, server_address , expectedSeqNum);
+        }
     }
+
+    /** reordering the packets and write them into file **/
+    string content = "";
+    for (int i = 0; i < numberOfPackets ; i++){
+        content += fileContents[i];
+    }
+    saveFile(fileName, content);
+    cout << "File is saved successfully . " << endl << flush;
 
 
 
@@ -117,4 +148,51 @@ packet create_packet_data(string file_name) {
     p.cksum = 0;
     p.len = file_name.length() + sizeof(p.cksum) + sizeof(p.len) + sizeof(p.seqno);
     return p;
+}
+
+void send_acknowledgement_packet(int client_socket, struct sockaddr_in server_address ,  int seqNum){
+
+    /** create ack packet **/
+    struct ack_packet ack;
+    ack.ackno = seqNum;
+    ack.cksum = 0;
+    ack.len = sizeof(ack);
+
+    /** convert packet to buffer **/
+    char* ack_buf = new char[MSS];
+    memset(ack_buf, 0, MSS);
+    memcpy(ack_buf, &ack, sizeof(ack));
+
+    /** send ack to server **/
+    ssize_t bytesSent = sendto(client_socket, ack_buf, MSS, 0, (struct sockaddr *)&server_address, sizeof(struct sockaddr));
+    if (bytesSent == -1) {
+        perror("couldn't send the ack");
+        exit(1);
+    } else {
+        cout << "Ack for packet seq. Num " << seqNum << " is sent." << endl << flush;
+    }
+
+}
+
+
+
+void saveFile (string fileName, string content){
+    ofstream f_stream(fileName.c_str());
+    f_stream.write(content.c_str(), content.length());
+}
+
+
+
+vector<string> readArgsFile(){
+    string fileName = "info.txt";
+    vector<string> commands;
+    string line;
+    string content = "";
+    ifstream myfile;
+    myfile.open(fileName);
+    while(getline(myfile, line))
+    {
+        commands.push_back(line);
+    }
+    return commands;
 }
