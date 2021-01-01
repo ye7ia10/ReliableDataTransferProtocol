@@ -57,11 +57,14 @@ packet create_packet_data(string packetString, int seqNum);
 bool send_packet(int client_fd, struct sockaddr_in client_addr , string temp_packet_string, int seqNum);
 vector<string> readArgsFile();
 bool DropTheDatagram();
+uint16_t get_data_checksum (string content, uint16_t len , uint32_t seqno);
+uint16_t get_ack_checksum (uint16_t len , uint32_t ackno);
 
- enum state {slow_start, congestion_avoidance, fast_recovery};
- int port, RandomSeedGen;
- double PLP;
- vector<not_sent_packet> not_sent_packets;
+enum fsm_state {slow_start, congestion_avoidance, fast_recovery};
+int port, RandomSeedGen;
+double PLP;
+vector<not_sent_packet> not_sent_packets;
+vector<packet> sent_packets;
 
 int main()
 {
@@ -83,62 +86,53 @@ int main()
 
     if ((server_socket = socket(PF_INET, SOCK_DGRAM, IPPROTO_UDP)) < 0)
     {
-        perror("cannot create socket");
+        perror("error creating server socket ! ");
         exit(1);
     }
 
     memset(&server_address, 0, sizeof(server_address));
     memset(&client_address, 0, sizeof(client_address));
-    server_address.sin_family = AF_INET; // host byte order
-    server_address.sin_port = htons(portNom); // short, network byte order
-    server_address.sin_addr.s_addr = INADDR_ANY; // automatically fill with my IP
-    memset(&(server_address.sin_zero), '\0', ACK_PACKET_SIZE); // zero the rest of the struct
+    server_address.sin_family = AF_INET;
+    server_address.sin_port = htons(portNom);
+    server_address.sin_addr.s_addr = INADDR_ANY;
+    memset(&(server_address.sin_zero), '\0', ACK_PACKET_SIZE);
 
     if (bind(server_socket, (struct sockaddr *) &server_address, sizeof(server_address)) < 0)
     {
-        perror("error in binding server");
+        perror("error in binding server ! ");
         exit(1);
     }
 
-    while (1){
+    while (true){
         socklen_t client_addrlen = sizeof(struct sockaddr);
         cout << "Waiting For A New Connection ... " << endl << flush;
         char rec_buffer[MSS];
         ssize_t Received_bytes = recvfrom(server_socket, rec_buffer, MSS, 0, (struct sockaddr*)&client_address, &client_addrlen);
         if (Received_bytes < 0){
-             perror("error in receiving bytes");
+             perror("error in receiving bytes of the file name !");
              exit(1);
         }
         if (Received_bytes == 0){
              perror("Client closed connection or error in receiving bytes");
              exit(1);
         }
-        auto* data_packet = (struct packet*) rec_buffer;
-
 
         /** forking to handle request **/
          pid_t pid = fork();
          if (pid == -1){
-             perror("error in forking a child process");
+             perror("error in forking a child process for the client ! ");
          } else if (pid == 0){
 
-            /** child process for client **/
-            /** create client socket **/
             if ((client_socket = socket(PF_INET, SOCK_DGRAM, IPPROTO_UDP)) < 0)
             {
-                perror("cannot create client socket");
+                perror("error creating a socket for the client ! ");
                 exit(1);
             }
              handle_client_request(server_socket,client_socket, client_address, rec_buffer , MSS);
              exit(0);
          }
 
-
-
     }
-
-
-
 
     return 0;
 }
@@ -165,7 +159,7 @@ void handle_client_request(int server_socket, int client_fd, struct sockaddr_in 
      memcpy(buf, &ack, sizeof(ack));
      ssize_t bytesSent = sendto(client_fd, buf, MSS, 0, (struct sockaddr *)&client_addr, sizeof(struct sockaddr));
      if (bytesSent == -1) {
-        perror("couldn't send the ack");
+        perror("Error Sending The Ack ! ");
         exit(1);
      } else {
         cout << "Ack of file name is sent successfully" << endl << flush;
@@ -198,7 +192,7 @@ void sendTheData_HandleCongesion (int client_fd, struct sockaddr_in client_addr 
     bool flag = true;
     int seqNum = 0;
     long sentPacketsNotAcked = 0;
-    state st = slow_start;
+    fsm_state st = slow_start;
     long numberOfDupAcks = 0;
     int lastAckedSeqNum = -1;
     bool stillExistAcks = true;
@@ -220,8 +214,8 @@ void sendTheData_HandleCongesion (int client_fd, struct sockaddr_in client_addr 
                 in case error simulated won't send the packet so the seqnumber will not correct at the receiver so will send duplicate ack.
             **/
             bool isSent = send_packet(client_fd, client_addr, temp_packet_string,seqNum);
-            if (isSent = false) {
-                perror("couldn't send the ack");
+            if (isSent == false) {
+                perror("Error sending data packet ! ");
                 exit(1);
             } else {
                 sentPacketsNotAcked++;
@@ -238,7 +232,7 @@ void sendTheData_HandleCongesion (int client_fd, struct sockaddr_in client_addr 
                 cout << "waiting ack " << endl << flush;
                 ssize_t Received_bytes = recvfrom(client_fd, rec_buf, ACK_PACKET_SIZE, 0, (struct sockaddr*)&client_addr, &client_addrlen);
                 if (Received_bytes < 0){
-                     perror("error in receiving bytes");
+                     perror("error receiving bytes ! ");
                      exit(1);
                 }
                 else if (Received_bytes != ACK_PACKET_SIZE){
@@ -255,6 +249,7 @@ void sendTheData_HandleCongesion (int client_fd, struct sockaddr_in client_addr 
                     if (lastAckedSeqNum == ack_seqno){
 
                         numberOfDupAcks++;
+                        sentPacketsNotAcked--;
                         if (st == fast_recovery){
                             cwnd++;
                         } else if (numberOfDupAcks == 3){
@@ -263,17 +258,46 @@ void sendTheData_HandleCongesion (int client_fd, struct sockaddr_in client_addr 
                             st = fast_recovery;
 
                             /** retransmit the lost packet **/
-                            seqNum = base_packet_number;
-                            string temp_packet_string = data[seqNum];
-                            bool isSent = send_packet(client_fd, client_addr, temp_packet_string,seqNum);
-                            if (isSent = false) {
-                                perror("couldn't send the ack");
-                                exit(1);
-                            } else {
-                                sentPacketsNotAcked++;
-                                alreadySentPackets++;
+                            seqNum = ack_seqno;
+                            bool found = false;
+                            for (int j = 0; j < not_sent_packets.size() ;j++){
+                                not_sent_packet nspkt = not_sent_packets[j];
+                                if (nspkt.seqno == seqNum){
+                                      found = true;
+                                      string temp_packet_string = data[seqNum];
+                                      bool isSent = send_packet(client_fd, client_addr, temp_packet_string,seqNum);
+                                      if (isSent == false) {
+                                          perror("error re-sending data packet ! ");
+                                          exit(1);
+                                      } else {
+                                          sentPacketsNotAcked++;
+                                          alreadySentPackets++;
+                                          not_sent_packets.erase(not_sent_packets.begin() + j);
+                                      }
+                                      break;
+                                }
                             }
 
+                            /** handle checksum error **/
+                            if (!found){
+                                for (int j = 0; j < sent_packets.size() ;j++){
+                                    packet spkt = sent_packets[j];
+                                    if (spkt.seqno == seqNum){
+                                          found = true;
+                                          string temp_packet_string = data[seqNum];
+                                          bool isSent = send_packet(client_fd, client_addr, temp_packet_string,seqNum);
+                                          if (isSent == false) {
+                                              perror("error re-sending data packet ! ");
+                                              exit(1);
+                                          } else {
+                                              alreadySentPackets++;
+                                              sent_packets.erase(sent_packets.begin() + j);
+                                          }
+                                          break;
+                                    }
+                                }
+
+                            }
 
                         }
 
@@ -327,8 +351,8 @@ void sendTheData_HandleCongesion (int client_fd, struct sockaddr_in client_addr 
                  seqNum = nspkt.seqno;
                  string temp_packet_string = data[seqNum];
                  bool isSent = send_packet(client_fd, client_addr, temp_packet_string,seqNum);
-                 if (isSent = false) {
-                        perror("couldn't send the ack");
+                 if (isSent == false) {
+                        perror("error resending the data packet ! ");
                         exit(1);
                  } else {
                         sentPacketsNotAcked++;
@@ -361,6 +385,7 @@ bool send_packet(int client_fd, struct sockaddr_in client_addr , string temp_pac
          if (bytesSent == -1) {
                 return false;
          } else {
+                sent_packets.push_back(data_packet);
                 return true;
          }
      } else {
@@ -383,8 +408,9 @@ packet create_packet_data(string packetString, int seqNum) {
     strcpy(p.data, packetString.c_str());
     //p.data = &packetString[0];
     p.seqno = seqNum;
-    p.cksum = 0;
     p.len = packetString.size();
+    //cout << "plen : " << p.len << endl;
+    p.cksum = get_data_checksum(packetString,p.len,p.seqno);
     return p;
 
 }
@@ -404,32 +430,6 @@ long checkFileExistence(string fileName){
      file.close();
      return len;
 }
-
-
-vector<string> readArgsFile(){
-    string fileName = "info.txt";
-    vector<string> commands;
-    string line;
-    string content = "";
-    ifstream myfile;
-    myfile.open(fileName);
-    while(getline(myfile, line))
-    {
-        commands.push_back(line);
-    }
-    return commands;
-}
-
-bool DropTheDatagram(){
-    srand(RandomSeedGen);
-    int res = rand() % 100;
-    double isLost = res * PLP;
-    if (isLost >= 5.9){
-        return true;
-    }
-    return false;
-}
-
 
 vector<string> readDataFromFile(string fileName){
 
@@ -460,5 +460,64 @@ vector<string> readDataFromFile(string fileName){
     return DataPackets;
 
 }
+
+vector<string> readArgsFile(){
+    string fileName = "info.txt";
+    vector<string> commands;
+    string line;
+    string content = "";
+    ifstream myfile;
+    myfile.open(fileName);
+    while(getline(myfile, line))
+    {
+        commands.push_back(line);
+    }
+    return commands;
+}
+
+bool DropTheDatagram(){
+    srand(RandomSeedGen);
+    int res = rand() % 100;
+    double isLost = res * PLP;
+    if (isLost >= 5.9){
+        return true;
+    }
+    return false;
+}
+
+uint16_t get_data_checksum (string content, uint16_t len , uint32_t seqno){
+
+    uint32_t sum = 0;
+    sum += len;
+    sum += seqno;
+    int n = content.length();
+    char arr[n+1];
+    strcpy(arr, content.c_str());
+    //cout << " n : " << n << endl;
+    //cout << "last : " << arr[n-1] << endl;
+    //cout << "exact : " << content[n-1] << endl;
+    for (int i = 0; i < n; i++){
+        sum += arr[i];
+    }
+    while (sum >> 16){
+        sum = (sum & 0xFFFF) + (sum >> 16);
+    }
+    uint16_t OCSum = (uint16_t) (~sum);
+    return OCSum;
+}
+
+uint16_t get_ack_checksum (uint16_t len , uint32_t ackno){
+
+    uint32_t sum = 0;
+    sum += len;
+    sum += ackno;
+    while (sum >> 16){
+        sum = (sum & 0xFFFF) + (sum >> 16);
+    }
+    uint16_t OCSum = (uint16_t) (~sum);
+    return OCSum;
+}
+
+
 
 

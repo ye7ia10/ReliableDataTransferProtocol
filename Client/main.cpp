@@ -41,6 +41,8 @@ packet create_packet_data(string file_name);
 void saveFile (string fileName, string content);
 void send_acknowledgement_packet(int client_socket, struct sockaddr_in server_address ,  int seqNum);
 vector<string> readArgsFile();
+uint16_t get_data_checksum (string content, uint16_t len , uint32_t seqno);
+uint16_t get_ack_checksum (uint16_t len , uint32_t ackno);
 
 int main()
 {
@@ -85,6 +87,7 @@ int main()
     }
 
 
+
     char rec_buffer[MSS];
     socklen_t addrlen = sizeof(server_address);
     ssize_t Received_bytes = recvfrom(client_socket, rec_buffer, MSS, 0, (struct sockaddr*)&server_address, &addrlen);
@@ -96,7 +99,7 @@ int main()
     cout << "Number of packets " << ackPacket->len << endl;
     long numberOfPackets = ackPacket->len;
     string fileContents [numberOfPackets];
-
+    bool recieved[numberOfPackets] = {false};
 
     int i = 1;
     int expectedSeqNum = 0;
@@ -116,14 +119,29 @@ int main()
         }
         //fileContents[data_packet->seqno] = string(&data_packet->data[0], &data_packet->data[499]);
         //cout << data_packet->data[0]<<data_packet->data[499] << endl;
-        if (expectedSeqNum == data_packet->seqno){
-            /** send ack **/
-            send_acknowledgement_packet(client_socket, server_address , data_packet->seqno);
+
+        /*
+        if (recieved[data_packet->seqno] == false){
             i++;
-            expectedSeqNum++;
+        }
+        recieved[data_packet->seqno] = true;
+        if (expectedSeqNum == data_packet->seqno){
+            // send ack
+            send_acknowledgement_packet(client_socket, server_address , data_packet->seqno);
+            for (int z = expectedSeqNum ; z < len ; z++){
+                if (recieved[z] == true){
+                    expectedSeqNum++;
+                } else {
+                    break;
+                }
+            }
         } else {
            send_acknowledgement_packet(client_socket, server_address , expectedSeqNum);
-        }
+        }*/
+
+        send_acknowledgement_packet(client_socket, server_address , data_packet->seqno);
+        i++;
+
     }
 
     /** reordering the packets and write them into file **/
@@ -196,3 +214,36 @@ vector<string> readArgsFile(){
     }
     return commands;
 }
+
+
+
+uint16_t get_data_checksum (string content, uint16_t len , uint32_t seqno){
+
+    uint32_t sum = 0;
+    sum += len;
+    sum += seqno;
+    int n = content.length();
+    char arr[n+1];
+    strcpy(arr, content.c_str());
+    for (int i = 0; i < n; i++){
+        sum += arr[i];
+    }
+    while (sum >> 16){
+        sum = (sum & 0xFFFF) + (sum >> 16);
+    }
+    uint16_t OCSum = (uint16_t) (~sum);
+    return OCSum;
+}
+
+uint16_t get_ack_checksum (uint16_t len , uint32_t ackno){
+
+    uint32_t sum = 0;
+    sum += len;
+    sum += ackno;
+    while (sum >> 16){
+        sum = (sum & 0xFFFF) + (sum >> 16);
+    }
+    uint16_t OCSum = (uint16_t) (~sum);
+    return OCSum;
+}
+
