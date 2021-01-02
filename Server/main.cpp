@@ -334,7 +334,6 @@ void sendTheData_HandleCongesion (int client_fd, struct sockaddr_in client_addr 
 
             }
 
-
         }
 
 
@@ -415,10 +414,10 @@ packet create_packet_data(string packetString, int seqNum) {
 long checkFileExistence(string fileName){
      ifstream file(fileName.c_str(), ifstream::ate | ifstream::binary);
      if (!file.is_open()) {
-        cout << "file doesn't exist or Can't open file\n";
+        cout << "Error Open the requested file" << endl << flush;
         return -1;
      }
-     cout << "File opened successfully\n";
+     cout << "the File is opened successfully" << endl << flush;
      long len = file.tellg();
      file.close();
      return len;
@@ -468,17 +467,6 @@ vector<string> readArgsFile(){
     return commands;
 }
 
-bool DropTheDatagram(){
-
-    int res = rand() % 100;
-    double isLost = res * PLP;
-    cout << "is Lost val : " << isLost << endl << flush;
-    if (isLost >= 5.9){
-        return true;
-    }
-    return false;
-}
-
 uint16_t get_data_checksum (string content, uint16_t len , uint32_t seqno){
 
     uint32_t sum = 0;
@@ -498,6 +486,16 @@ uint16_t get_data_checksum (string content, uint16_t len , uint32_t seqno){
     }
     uint16_t OCSum = (uint16_t) (~sum);
     return OCSum;
+}
+
+bool DropTheDatagram(){
+    int res = rand() % 100;
+    double isLost = res * PLP;
+    cout << "is Lost val : " << isLost << endl << flush;
+    if (isLost >= 5.9){
+        return true;
+    }
+    return false;
 }
 
 uint16_t get_ack_checksum (uint16_t len , uint32_t ackno){

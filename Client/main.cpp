@@ -4,7 +4,6 @@
 #include <unistd.h>
 #include <netdb.h>
 #include <string>
-
 #include <bits/stdc++.h>
 #include <errno.h>
 #include <string.h>
@@ -13,7 +12,6 @@
 #include <netinet/in.h>
 #include <arpa/inet.h>
 #include <sys/wait.h>
-
 
 using namespace std;
 
@@ -82,8 +80,6 @@ int main()
     } else {
        cout << "Client Sent The file Name ." << endl << flush;
     }
-
-
 
     char rec_buffer[MSS];
     socklen_t addrlen = sizeof(server_address);
@@ -157,7 +153,6 @@ int main()
     cout << "File is saved successfully . " << endl << flush;
 
 
-
     return 0;
 }
 
@@ -180,13 +175,9 @@ void send_acknowledgement_packet(int client_socket, struct sockaddr_in server_ad
     ack.len = sizeof(ack);
     ack.cksum = get_ack_checksum(ack.len, ack.ackno);
     //ack.cksum = 0;
-
-    /** convert packet to buffer **/
     char* ack_buf = new char[MSS];
     memset(ack_buf, 0, MSS);
     memcpy(ack_buf, &ack, sizeof(ack));
-
-    /** send ack to server **/
     ssize_t bytesSent = sendto(client_socket, ack_buf, MSS, 0, (struct sockaddr *)&server_address, sizeof(struct sockaddr));
     if (bytesSent == -1) {
         perror("error sending the ack ! ");
@@ -195,13 +186,6 @@ void send_acknowledgement_packet(int client_socket, struct sockaddr_in server_ad
         cout << "Ack for packet seq. Num " << seqNum << " is sent." << endl << flush;
     }
 
-}
-
-
-
-void saveFile (string fileName, string content){
-    ofstream f_stream(fileName.c_str());
-    f_stream.write(content.c_str(), content.length());
 }
 
 
@@ -239,6 +223,13 @@ uint16_t get_data_checksum (string content, uint16_t len , uint32_t seqno){
     uint16_t OCSum = (uint16_t) (~sum);
     return OCSum;
 }
+
+
+void saveFile (string fileName, string content){
+    ofstream f_stream(fileName.c_str());
+    f_stream.write(content.c_str(), content.length());
+}
+
 
 uint16_t get_ack_checksum (uint16_t len , uint32_t ackno){
 
