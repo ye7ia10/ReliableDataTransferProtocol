@@ -2,11 +2,9 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <unistd.h>
-#include <signal.h>
 #include <netdb.h>
 #include <string>
-#include <thread>
-#include <ctime>
+
 #include <bits/stdc++.h>
 #include <errno.h>
 #include <string.h>
@@ -20,19 +18,17 @@
 using namespace std;
 
 static const int MSS = 508;
-/* Data-only packets */
+
 struct packet {
-    /* Header */
-    uint16_t cksum; /* Optional bonus part */
+    uint16_t cksum;
     uint16_t len;
     uint32_t seqno;
-    /* Data */
-    char data [500]; /* Not always 500 bytes, can be less */
+    char data [500];
 };
 
-/* Ack-only packets are only 8 bytes */
+
 struct ack_packet {
-    uint16_t cksum; /* Optional bonus part */
+    uint16_t cksum;
     uint16_t len;
     uint32_t ackno;
 };
@@ -81,9 +77,10 @@ int main()
     memcpy(buffer, &fileName_packet, sizeof(fileName_packet));
     ssize_t bytesSent = sendto(client_socket, buffer, MSS, 0, (struct sockaddr *)&server_address, sizeof(struct sockaddr));
     if (bytesSent == -1) {
-        perror("couldn't send the packet");
+        perror("Error sending the file name ! ");
+        exit(1);
     } else {
-       cout << "Sent The file Name " << endl << flush;
+       cout << "Client Sent The file Name ." << endl << flush;
     }
 
 
@@ -92,7 +89,7 @@ int main()
     socklen_t addrlen = sizeof(server_address);
     ssize_t Received_bytes = recvfrom(client_socket, rec_buffer, MSS, 0, (struct sockaddr*)&server_address, &addrlen);
     if (Received_bytes < 0){
-        perror("error in receiving bytes");
+        perror("error in receiving file name ack .");
         exit(1);
     }
     auto* ackPacket = (struct ack_packet*) rec_buffer;
@@ -107,7 +104,7 @@ int main()
         memset(rec_buffer, 0, MSS);
         ssize_t bytesReceived = recvfrom(client_socket, rec_buffer, MSS, 0, (struct sockaddr*)&server_address, &addrlen);
         if (bytesReceived == -1){
-            perror("Error in recv(). Quitting");
+            perror("Error receiving data packet.");
             break;
         }
         auto* data_packet = (struct packet*) rec_buffer;
@@ -117,8 +114,15 @@ int main()
         for (int j = 0 ; j < len ; j++){
             fileContents[data_packet->seqno] += data_packet->data[j];
         }
+        if (get_data_checksum(fileContents[data_packet->seqno], data_packet->len, data_packet->seqno) != data_packet->cksum){
+            cout << "corrupted data packet !" << endl << flush;
+        }
+
+        //fileContents[data_packet->seqno] = string(data_packet->data);
         //fileContents[data_packet->seqno] = string(&data_packet->data[0], &data_packet->data[499]);
         //cout << data_packet->data[0]<<data_packet->data[499] << endl;
+
+
 
         /*
         if (recieved[data_packet->seqno] == false){
@@ -173,8 +177,9 @@ void send_acknowledgement_packet(int client_socket, struct sockaddr_in server_ad
     /** create ack packet **/
     struct ack_packet ack;
     ack.ackno = seqNum;
-    ack.cksum = 0;
     ack.len = sizeof(ack);
+    ack.cksum = get_ack_checksum(ack.len, ack.ackno);
+    //ack.cksum = 0;
 
     /** convert packet to buffer **/
     char* ack_buf = new char[MSS];
@@ -184,7 +189,7 @@ void send_acknowledgement_packet(int client_socket, struct sockaddr_in server_ad
     /** send ack to server **/
     ssize_t bytesSent = sendto(client_socket, ack_buf, MSS, 0, (struct sockaddr *)&server_address, sizeof(struct sockaddr));
     if (bytesSent == -1) {
-        perror("couldn't send the ack");
+        perror("error sending the ack ! ");
         exit(1);
     } else {
         cout << "Ack for packet seq. Num " << seqNum << " is sent." << endl << flush;
